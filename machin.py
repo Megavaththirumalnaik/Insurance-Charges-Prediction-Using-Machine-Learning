@@ -17,6 +17,7 @@ except:
 with open(r"C:\Users\megva\Insurance Charges Prediction Using  Machine Learning\model_insurance.pk1", "rb") as f1:
     model = pickle.load(f1)
 
+# === Streamlit Setup ===
 st.set_page_config(page_title="Insurance Prediction", layout="centered")
 st.title("🏥 Insurance Charges Prediction")
 
@@ -78,13 +79,19 @@ smoker_flag = 0 if smoker == "Yes" else 1
 region_map = {"southeast": 0, "southwest": 1, "northeast": 2, "northwest": 3}
 region_code = region_map[region]
 
+# New: Encode plan numerically
+plan_map = {"Basic": 0, "Standard": 1, "Premium": 2}
+plan_code = plan_map[plan]
+
+# Input DataFrame — added 'plan' (even if model wasn't trained with it, for future-proofing)
 input_df = pd.DataFrame([{
     "age": age,
     "sex": sex_flag,
     "bmi": bmi,
     "children": children,
     "smoker": smoker_flag,
-    "region": region_code
+    "region": region_code,
+    "plan": plan_code  # For future use; model may ignore this if not trained with it
 }])
 
 # === Prediction ===
@@ -92,19 +99,27 @@ if st.button("🔍 Predict Insurance Charge"):
     if income < 15000:
         st.error("❌ You are not eligible for any insurance plan with an income below ₹15,000.")
     else:
-        predicted_annual_charge = model.predict(input_df)[0]
-        predicted_total_charge = predicted_annual_charge * selected_years
+        # Base model prediction (model might not use 'plan' yet)
+        predicted_annual_charge = model.predict(input_df.drop(columns=["plan"], errors="ignore"))[0]
+
+        # Adjust prediction based on selected plan — Plan multiplier
+        plan_multiplier = {0: 1.0, 1: 1.2, 2: 1.5}  # Basic → no change, Standard → +20%, Premium → +50%
+        adjusted_annual_charge = predicted_annual_charge * plan_multiplier[plan_code]
+
+        # Total charge
+        predicted_total_charge = adjusted_annual_charge * selected_years
         recommended_charge = income * plan_percent * selected_years
 
-        st.success(f"💰 Predicted Annual Charge: {format_inr(predicted_annual_charge)}")
+        # === Display Results ===
+        st.success(f"💰 Predicted Annual Charge (adjusted for Plan): {format_inr(adjusted_annual_charge)}")
         st.info(f"📆 Policy Duration: {selected_years} year(s)")
         st.success(f"📊 Total Insurance Charge: {format_inr(predicted_total_charge)}")
         st.info(f"🧾 Recommended max for {plan} Plan: {format_inr(recommended_charge)}")
 
         if predicted_total_charge > recommended_charge:
             st.warning("⚠️ Predicted cost is higher than recommended for your income and selected plan.")
+            st.warning("🔺 You may need to increase your income or choose a different plan.")
         else:
             st.success("✅ Prediction is within your budget for the selected plan.")
 
         st.toast("Prediction completed!", icon="✅")
-
